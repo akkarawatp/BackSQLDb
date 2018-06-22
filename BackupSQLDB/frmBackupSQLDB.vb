@@ -222,6 +222,20 @@ Public Class frmBackupSQLDB
             Dim DbName() As String = txtDatabaseName.Text.Split(";")
             If DbName.Length > 0 Then
                 Try
+                    Dim vDateNow As DateTime = DateTime.Now
+                    For Each DatabaseName As String In DbName
+                        Dim BackupFileName As String = BackupPath & "Backup_" & DatabaseName & "_" & vDateNow.ToString("yyyyMMdd_HHmm") & ".bak"
+                        Dim ZipFileName As String = BackupPath & "Backup_" & DatabaseName & "_" & vDateNow.ToString("yyyyMMdd_HHmm") & ".zip"
+                        Try
+                            BackupDB(DatabaseName, BackupFileName)
+                            If File.Exists(BackupFileName) = True Then
+                                CreateZipFile(BackupFileName, ZipFileName)
+                            End If
+                        Catch ex As Exception
+                            txtMessage.Text += DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") & "   " & "Exception1 :" & ex.Message & vbNewLine & ex.StackTrace & vbNewLine & vbNewLine
+                        End Try
+                    Next
+
                     Using unc As New UNCAccessWithCredentials.UNCAccessWithCredentials
                         ini.Section = "SharedPath"
 
@@ -231,25 +245,15 @@ Public Class frmBackupSQLDB
                         Dim SharedDomain As String = ini.ReadString("SharedDomain")
 
                         If unc.NetUseWithCredentials(SharedPath, SharedUser, SharedDomain, SharedPassword) = True Then
-                            Dim vDateNow As DateTime = DateTime.Now
-                            For Each DatabaseName As String In DbName
-                                Dim BackupFileName As String = BackupPath & "Backup_" & DatabaseName & "_" & vDateNow.ToString("yyyyMMdd_HHmm") & ".bak"
-                                Dim ZipFileName As String = BackupPath & "Backup_" & DatabaseName & "_" & vDateNow.ToString("yyyyMMdd_HHmm") & ".zip"
-                                Try
-                                    BackupDB(DatabaseName, BackupFileName)
-                                    If File.Exists(BackupFileName) = True Then
-                                        CreateZipFile(BackupFileName, ZipFileName)
-
-                                        If File.Exists(ZipFileName) = True Then
-                                            MoveZipfileToSharedPath(ZipFileName, SharedPath)
-                                        End If
-                                    End If
-                                Catch ex As Exception
-                                    txtMessage.Text += DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") & "   " & "Exception1 :" & ex.Message & vbNewLine & ex.StackTrace & vbNewLine & vbNewLine
-                                End Try
+                            For Each ZipFileName As String In Directory.GetFiles(BackupPath)
+                                ' Dim ZipFileName As String = BackupPath & "Backup_" & DatabaseName & "_" & vDateNow.ToString("yyyyMMdd_HHmm") & ".zip"
+                                If File.Exists(ZipFileName) = True Then
+                                    MoveZipfileToSharedPath(ZipFileName, SharedPath)
+                                End If
                             Next
-
                             SaveBackupLog(vDateNow, SharedPath)
+                        Else
+                            'MessageBox.Show(unc.LastError)
                         End If
                     End Using
                 Catch ex As Exception
