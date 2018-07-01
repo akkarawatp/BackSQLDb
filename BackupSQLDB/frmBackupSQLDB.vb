@@ -38,6 +38,14 @@ Public Class frmBackupSQLDB
         ini.Write("UserID", txtUserID.Text.Trim)
         ini.Write("Password", txtPassword.Text.Trim)
         ini.Write("BackupTempPath", txtBackupFolder.Text.Trim)
+        ini.Write("BackupToSharedPath", IIf(rdiSharedPath.Checked = True, 1, 0))
+        ini.Write("BackupPath", txtPhysicalPath.Text)
+
+        ini.Section = "SharedPath"
+        ini.Write("BackupSharedPath", txtSharedPath.Text)
+        ini.Write("SharedUser", txtSharedUser.Text)
+        ini.Write("SharedPassword", txtSharedPassword.Text)
+        ini.Write("SharedDomain", txtSharedDomain.Text)
         ini = Nothing
 
         Dim dbName() As String = txtDatabaseName.Text.Trim.Split(";")
@@ -212,11 +220,11 @@ Public Class frmBackupSQLDB
             Dim ini As New Org.Mentalis.Files.IniReader(INIFileName)
             ini.Section = "DbSetting"
 
-            Dim BackupPath As String = ini.ReadString("BackupTempPath")
+            Dim BackupTempPath As String = ini.ReadString("BackupTempPath")
             Dim BackupHisMonth As Int16 = ini.ReadString("BackupHisMonth")
 
-            If IO.Directory.Exists(BackupPath) = False Then
-                IO.Directory.CreateDirectory(BackupPath)
+            If IO.Directory.Exists(BackupTempPath) = False Then
+                IO.Directory.CreateDirectory(BackupTempPath)
             End If
 
             Dim DbName() As String = txtDatabaseName.Text.Split(";")
@@ -224,8 +232,8 @@ Public Class frmBackupSQLDB
                 Try
                     Dim vDateNow As DateTime = DateTime.Now
                     For Each DatabaseName As String In DbName
-                        Dim BackupFileName As String = BackupPath & "Backup_" & DatabaseName & "_" & vDateNow.ToString("yyyyMMdd_HHmm") & ".bak"
-                        Dim ZipFileName As String = BackupPath & "Backup_" & DatabaseName & "_" & vDateNow.ToString("yyyyMMdd_HHmm") & ".zip"
+                        Dim BackupFileName As String = BackupTempPath & "Backup_" & DatabaseName & "_" & vDateNow.ToString("yyyyMMdd_HHmm") & ".bak"
+                        Dim ZipFileName As String = BackupTempPath & "Backup_" & DatabaseName & "_" & vDateNow.ToString("yyyyMMdd_HHmm") & ".zip"
                         Try
                             BackupDB(DatabaseName, BackupFileName)
                             If File.Exists(BackupFileName) = True Then
@@ -236,26 +244,42 @@ Public Class frmBackupSQLDB
                         End Try
                     Next
 
-                    Using unc As New UNCAccessWithCredentials.UNCAccessWithCredentials
-                        ini.Section = "SharedPath"
+                    If ini.ReadString("BackupToSharedPath") = 1 Then
+                        Using unc As New UNCAccessWithCredentials.UNCAccessWithCredentials
+                            ini.Section = "SharedPath"
 
-                        Dim SharedPath As String = ini.ReadString("BackupSharedPath")
-                        Dim SharedUser As String = ini.ReadString("SharedUser")
-                        Dim SharedPassword As String = ini.ReadString("SharedPassword")
-                        Dim SharedDomain As String = ini.ReadString("SharedDomain")
+                            Dim SharedPath As String = ini.ReadString("BackupSharedPath")
+                            Dim SharedUser As String = ini.ReadString("SharedUser")
+                            Dim SharedPassword As String = ini.ReadString("SharedPassword")
+                            Dim SharedDomain As String = ini.ReadString("SharedDomain")
 
-                        If unc.NetUseWithCredentials(SharedPath, SharedUser, SharedDomain, SharedPassword) = True Then
-                            For Each ZipFileName As String In Directory.GetFiles(BackupPath)
-                                ' Dim ZipFileName As String = BackupPath & "Backup_" & DatabaseName & "_" & vDateNow.ToString("yyyyMMdd_HHmm") & ".zip"
-                                If File.Exists(ZipFileName) = True Then
-                                    MoveZipfileToSharedPath(ZipFileName, SharedPath)
-                                End If
-                            Next
-                            SaveBackupLog(vDateNow, SharedPath)
-                        Else
-                            'MessageBox.Show(unc.LastError)
+                            If unc.NetUseWithCredentials(SharedPath, SharedUser, SharedDomain, SharedPassword) = True Then
+                                For Each ZipFileName As String In Directory.GetFiles(BackupTempPath, "*.zip")
+                                    ' Dim ZipFileName As String = BackupPath & "Backup_" & DatabaseName & "_" & vDateNow.ToString("yyyyMMdd_HHmm") & ".zip"
+                                    If File.Exists(ZipFileName) = True Then
+                                        MoveZipfileToSharedPath(ZipFileName, SharedPath)
+                                    End If
+                                Next
+                                SaveBackupLog(vDateNow, SharedPath)
+                            Else
+                                'MessageBox.Show(unc.LastError)
+                            End If
+                        End Using
+                    Else
+                        Dim BackupPath As String = ini.ReadString("BackupPath")
+                        If Directory.Exists(BackupPath) = False Then
+                            Directory.CreateDirectory(BackupPath)
                         End If
-                    End Using
+
+                        For Each ZipFileName As String In Directory.GetFiles(BackupTempPath, "*.zip")
+                            ' Dim ZipFileName As String = BackupPath & "Backup_" & DatabaseName & "_" & vDateNow.ToString("yyyyMMdd_HHmm") & ".zip"
+                            If File.Exists(ZipFileName) = True Then
+                                MoveZipfileToSharedPath(ZipFileName, BackupPath)
+                            End If
+                        Next
+                        SaveBackupLog(vDateNow, BackupPath)
+                    End If
+
                 Catch ex As Exception
                     txtMessage.Text += DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") & "   " & "Exception2 UNCAccessWithCredentials :" & ex.Message & vbNewLine & ex.StackTrace & vbNewLine & vbNewLine
                 End Try
@@ -269,9 +293,9 @@ Public Class frmBackupSQLDB
     End Sub
 
 #Region "Move Zip File To Shared Path"
-    Private Sub MoveZipfileToSharedPath(ZipFileName As String, SharedPath As String)
-        txtMessage.Text += DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") & "   " & "MoveZipfileToSharedPath:" & ZipFileName & "  SharedPath:" & SharedPath & vbNewLine
-        Dim DestFileName As String = SharedPath & "\" & Path.GetFileName(ZipFileName)
+    Private Sub MoveZipfileToSharedPath(ZipFileName As String, DestPath As String)
+        txtMessage.Text += DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") & "   " & "MoveZipfileToSharedPath:" & ZipFileName & "  DestPath:" & DestPath & vbNewLine
+        Dim DestFileName As String = DestPath & "\" & Path.GetFileName(ZipFileName)
         File.Copy(ZipFileName, DestFileName, True)
 
         'เสร็จแล้วให้ลบ Zip File เลย
@@ -325,7 +349,7 @@ Public Class frmBackupSQLDB
 
                     txtMessage.Text += DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") & "   " & "Delete Backup file " & ZipFileName & vbNewLine
                 Catch ex As Exception
-
+                    txtMessage.Text += DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") & "   " & "Delete Fail Backup file " & BackupFileName & vbNewLine & ex.Message & vbNewLine & ex.StackTrace & vbNewLine
                 End Try
             End If
         End If
@@ -445,31 +469,50 @@ Public Class frmBackupSQLDB
 
     Private Sub DeleteBackupHistory(BackupHisMonth As Int16)
         If BackupHisMonth > 0 Then
-            Using unc As New UNCAccessWithCredentials.UNCAccessWithCredentials
-                Dim ini As New Org.Mentalis.Files.IniReader(INIFileName)
-                ini.Section = "SharedPath"
+            Dim ini As New Org.Mentalis.Files.IniReader(INIFileName)
+            ini.Section = "DbSetting"
 
-                Dim SharedPath As String = ini.ReadString("BackupSharedPath")
-                Dim SharedUser As String = ini.ReadString("SharedUser")
-                Dim SharedPassword As String = ini.ReadString("SharedPassword")
-                Dim SharedDomain As String = ini.ReadString("SharedDomain")
+            If ini.ReadString("BackupToSharedPath") = 1 Then
+                Using unc As New UNCAccessWithCredentials.UNCAccessWithCredentials
+                    ini.Section = "SharedPath"
+                    Dim SharedPath As String = ini.ReadString("BackupSharedPath")
+                    Dim SharedUser As String = ini.ReadString("SharedUser")
+                    Dim SharedPassword As String = ini.ReadString("SharedPassword")
+                    Dim SharedDomain As String = ini.ReadString("SharedDomain")
 
-                If unc.NetUseWithCredentials(SharedPath, SharedUser, SharedDomain, SharedPassword) = True Then
-                    For Each f As String In IO.Directory.GetFiles(SharedPath)
-                        Dim fInfo As New IO.FileInfo(f)
-                        If DateAdd(DateInterval.Month, BackupHisMonth, fInfo.LastAccessTime) < DateTime.Today Then
-                            Try
-                                IO.File.SetAttributes(f, IO.FileAttributes.Normal)
-                                IO.File.Delete(f)
-                            Catch ex As Exception
-                                txtMessage.Text += DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") & "   " & "Exception Delete DeleteBackupHistory : FileName=" & f & vbNewLine & ex.Message & vbNewLine & ex.StackTrace & vbNewLine & vbNewLine
-                            End Try
-                        End If
-                        fInfo = Nothing
-                    Next
-                End If
-                ini = Nothing
-            End Using
+                    If unc.NetUseWithCredentials(SharedPath, SharedUser, SharedDomain, SharedPassword) = True Then
+                        For Each f As String In IO.Directory.GetFiles(SharedPath)
+                            Dim fInfo As New IO.FileInfo(f)
+                            If DateAdd(DateInterval.Month, BackupHisMonth, fInfo.LastAccessTime) < DateTime.Today Then
+                                Try
+                                    IO.File.SetAttributes(f, IO.FileAttributes.Normal)
+                                    IO.File.Delete(f)
+                                Catch ex As Exception
+                                    txtMessage.Text += DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") & "   " & "Exception Delete DeleteBackupHistory : FileName=" & f & vbNewLine & ex.Message & vbNewLine & ex.StackTrace & vbNewLine & vbNewLine
+                                End Try
+                            End If
+                            fInfo = Nothing
+                        Next
+                    End If
+                    ini = Nothing
+                End Using
+            Else
+                Dim BackupPath = ini.ReadString("BackupPath")
+                For Each f As String In IO.Directory.GetFiles(BackupPath)
+                    Dim fInfo As New IO.FileInfo(f)
+                    If DateAdd(DateInterval.Month, BackupHisMonth, fInfo.LastAccessTime) < DateTime.Today Then
+                        Try
+                            IO.File.SetAttributes(f, IO.FileAttributes.Normal)
+                            IO.File.Delete(f)
+                        Catch ex As Exception
+                            txtMessage.Text += DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") & "   " & "Exception Delete DeleteBackupHistory : FileName=" & f & vbNewLine & ex.Message & vbNewLine & ex.StackTrace & vbNewLine & vbNewLine
+                        End Try
+                    End If
+                    fInfo = Nothing
+                Next
+
+            End If
+
         End If
     End Sub
 
@@ -509,6 +552,32 @@ Public Class frmBackupSQLDB
         txtUserID.Text = ini.ReadString("UserID")
         txtPassword.Text = ini.ReadString("Password")
         txtBackupFolder.Text = ini.ReadString("BackupTempPath")
+        txtPhysicalPath.Text = ini.ReadString("BackupPath")
+        If ini.ReadString("BackupToSharedPath") = 1 Then
+            rdiSharedPath.Checked = True
+            txtSharedPath.Enabled = True
+            txtSharedUser.Enabled = True
+            txtSharedPassword.Enabled = True
+            txtSharedDomain.Enabled = True
+
+            rdiPhysicalPath.Checked = False
+            txtPhysicalPath.Enabled = False
+        Else
+            rdiPhysicalPath.Checked = True
+            txtPhysicalPath.Enabled = True
+
+            rdiSharedPath.Checked = False
+            txtSharedPath.Enabled = False
+            txtSharedUser.Enabled = False
+            txtSharedPassword.Enabled = False
+            txtSharedDomain.Enabled = False
+        End If
+
+        ini.Section = "SharedPath"
+        txtSharedPath.Text = ini.ReadString("BackupSharedPath")
+        txtSharedUser.Text = ini.ReadString("SharedUser")
+        txtSharedPassword.Text = ini.ReadString("SharedPassword")
+        txtSharedDomain.Text = ini.ReadString("SharedDomain")
         ini = Nothing
     End Sub
 
@@ -520,6 +589,41 @@ Public Class frmBackupSQLDB
 
         If fd.ShowDialog = DialogResult.OK Then
             txtBackupFolder.Text = fd.SelectedPath & "\"
+        End If
+    End Sub
+
+    Private Sub btnBrowsePhysicalPath_Click(sender As Object, e As EventArgs) Handles btnBrowsePhysicalPath.Click
+        Dim fd As New FolderBrowserDialog
+        If txtPhysicalPath.Text.Trim <> "" Then
+            fd.SelectedPath = txtPhysicalPath.Text
+        End If
+
+        If fd.ShowDialog = DialogResult.OK Then
+            txtPhysicalPath.Text = fd.SelectedPath & "\"
+        End If
+    End Sub
+
+    Private Sub rdiPhysicalPath_CheckedChanged(sender As Object, e As EventArgs) Handles rdiPhysicalPath.CheckedChanged
+        If rdiPhysicalPath.Checked = True Then
+            txtPhysicalPath.Enabled = True
+            btnBrowsePhysicalPath.Enabled = True
+
+            txtSharedPath.Enabled = False
+            txtSharedUser.Enabled = False
+            txtSharedDomain.Enabled = False
+            txtSharedPassword.Enabled = False
+        End If
+    End Sub
+
+    Private Sub rdiSharedPath_CheckedChanged(sender As Object, e As EventArgs) Handles rdiSharedPath.CheckedChanged
+        If rdiSharedPath.Checked = True Then
+            txtPhysicalPath.Enabled = False
+            btnBrowsePhysicalPath.Enabled = False
+
+            txtSharedPath.Enabled = True
+            txtSharedUser.Enabled = True
+            txtSharedDomain.Enabled = True
+            txtSharedPassword.Enabled = True
         End If
     End Sub
 #End Region
