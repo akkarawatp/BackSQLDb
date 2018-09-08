@@ -237,12 +237,14 @@ Public Class frmBackupSQLDB
                         Try
                             BackupDB(DatabaseName, BackupFileName)
                             If File.Exists(BackupFileName) = True Then
+                                Threading.Thread.Sleep(5000) 'รอซัก 5 วิ
                                 CreateZipFile(BackupFileName, ZipFileName)
                             End If
                         Catch ex As Exception
                             txtMessage.Text += DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") & "   " & "Exception1 :" & ex.Message & vbNewLine & ex.StackTrace & vbNewLine & vbNewLine
                         End Try
                     Next
+
 
                     If ini.ReadString("BackupToSharedPath") = 1 Then
                         Using unc As New UNCAccessWithCredentials.UNCAccessWithCredentials
