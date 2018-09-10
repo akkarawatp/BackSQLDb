@@ -1,7 +1,7 @@
 ﻿Imports System.Data.SqlClient
 Imports System.IO
 Imports System.IO.Packaging
-'Imports UNCAccessWithCredentials.UNCAccessWithCredentials
+
 
 Public Class frmBackupSQLDB
     Dim INIFileName As String = Application.StartupPath & "\ConfigDB.ini"
